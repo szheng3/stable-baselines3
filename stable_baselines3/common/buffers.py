@@ -389,7 +389,7 @@ class RolloutBuffer(BaseBuffer):
         """
         # Convert to numpy
         last_values = last_values.clone().cpu().numpy().flatten()
-
+        critic = last_values
         last_gae_lam = 0
         for step in reversed(range(self.buffer_size)):
             if step == self.buffer_size - 1:
@@ -399,7 +399,8 @@ class RolloutBuffer(BaseBuffer):
                 next_non_terminal = 1.0 - self.episode_starts[step + 1]
                 next_values = self.values[step + 1]
             if self.is_n_step:
-                self.advantages[step] = self.rewards[step] + self.gamma * last_values * next_non_terminal - self.values[step]
+                # advantage = reward + (1.0 - done) * gamma * critic(next_state) - critic(state)
+                self.advantages[step] = self.rewards[step] + self.gamma * critic * next_non_terminal - self.values[step]
             else:
                 delta = self.rewards[step] + self.gamma * next_values * next_non_terminal - self.values[step]
                 last_gae_lam = delta + self.gamma * self.gae_lambda * next_non_terminal * last_gae_lam
