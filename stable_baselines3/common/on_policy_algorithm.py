@@ -71,6 +71,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
         device: Union[th.device, str] = "auto",
         _init_setup_model: bool = True,
         supported_action_spaces: Optional[Tuple[spaces.Space, ...]] = None,
+        is_n_step_advantage: bool = False,
     ):
         super().__init__(
             policy=policy,
@@ -87,6 +88,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
             supported_action_spaces=supported_action_spaces,
         )
 
+        self.is_n_step_advantage = is_n_step_advantage
         self.n_steps = n_steps
         self.gamma = gamma
         self.gae_lambda = gae_lambda
@@ -112,6 +114,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
             gamma=self.gamma,
             gae_lambda=self.gae_lambda,
             n_envs=self.n_envs,
+            is_n_step_advantage=self.is_n_step_advantage,
         )
         self.policy = self.policy_class(  # pytype:disable=not-instantiable
             self.observation_space,

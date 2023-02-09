@@ -42,8 +42,10 @@ class BaseBuffer(ABC):
         action_space: spaces.Space,
         device: Union[th.device, str] = "auto",
         n_envs: int = 1,
+        is_n_step: bool = False,
     ):
         super().__init__()
+        self.is_n_step = is_n_step
         self.buffer_size = buffer_size
         self.observation_space = observation_space
         self.action_space = action_space
@@ -344,8 +346,9 @@ class RolloutBuffer(BaseBuffer):
         gae_lambda: float = 1,
         gamma: float = 0.99,
         n_envs: int = 1,
+        is_n_step_advantage=False,
     ):
-        super().__init__(buffer_size, observation_space, action_space, device, n_envs=n_envs)
+        super().__init__(buffer_size, observation_space, action_space, device, n_envs=n_envs,is_n_step=is_n_step_advantage)
         self.gae_lambda = gae_lambda
         self.gamma = gamma
         self.observations, self.actions, self.rewards, self.advantages = None, None, None, None
@@ -371,8 +374,8 @@ class RolloutBuffer(BaseBuffer):
         and GAE(lambda) advantage.
 
         Uses Generalized Advantage Estimation (https://arxiv.org/abs/1506.02438)
-        to compute the advantage. To obtain Monte-Carlo advantage estimate (A(s) = R - V(S))
-        where R is the sum of discounted reward with value bootstrap
+        to compute the advantage. To obtain Monte-Carlo advantage estimate (A(s) = r - V(S))
+        where r is the sum of discounted reward with value bootstrap
         (because we don't always have full episode), set ``gae_lambda=1.0`` during initialization.
 
         The TD(lambda) estimator has also two special cases:
@@ -395,9 +398,13 @@ class RolloutBuffer(BaseBuffer):
             else:
                 next_non_terminal = 1.0 - self.episode_starts[step + 1]
                 next_values = self.values[step + 1]
-            delta = self.rewards[step] + self.gamma * next_values * next_non_terminal - self.values[step]
-            last_gae_lam = delta + self.gamma * self.gae_lambda * next_non_terminal * last_gae_lam
-            self.advantages[step] = last_gae_lam
+            if self.is_n_step:
+                self.advantages[step] = self.rewards[step] + self.gamma * last_values * next_non_terminal - self.values[step]
+            else:
+                delta = self.rewards[step] + self.gamma * next_values * next_non_terminal - self.values[step]
+                last_gae_lam = delta + self.gamma * self.gae_lambda * next_non_terminal * last_gae_lam
+                self.advantages[step] = last_gae_lam
+
         # TD(lambda) estimator, see Github PR #375 or "Telescoping in TD(lambda)"
         # in David Silver Lecture 4: https://www.youtube.com/watch?v=PnHCvfgC_ZA
         self.returns = self.advantages + self.values
@@ -683,8 +690,9 @@ class DictRolloutBuffer(RolloutBuffer):
         gae_lambda: float = 1,
         gamma: float = 0.99,
         n_envs: int = 1,
+        is_n_step_advantage: bool = False,
     ):
-        super(RolloutBuffer, self).__init__(buffer_size, observation_space, action_space, device, n_envs=n_envs)
+        super(RolloutBuffer, self).__init__(buffer_size, observation_space, action_space, device, n_envs=n_envs,is_n_step=is_n_step_advantage)
 
         assert isinstance(self.obs_shape, dict), "DictRolloutBuffer must be used with Dict obs space only"
 

@@ -80,6 +80,8 @@ class A2C(OnPolicyAlgorithm):
         seed: Optional[int] = None,
         device: Union[th.device, str] = "auto",
         _init_setup_model: bool = True,
+        is_n_step_advantage: bool = False,
+
     ):
         super().__init__(
             policy,
@@ -105,6 +107,7 @@ class A2C(OnPolicyAlgorithm):
                 spaces.MultiDiscrete,
                 spaces.MultiBinary,
             ),
+            is_n_step_advantage=is_n_step_advantage,
         )
 
         self.normalize_advantage = normalize_advantage
