@@ -11,7 +11,8 @@ from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.policies import BasePolicy
 from stable_baselines3.common.preprocessing import maybe_transpose
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
-from stable_baselines3.common.utils import get_linear_fn, get_parameters_by_name, is_vectorized_observation, polyak_update
+from stable_baselines3.common.utils import get_linear_fn, get_parameters_by_name, is_vectorized_observation, \
+    polyak_update
 from stable_baselines3.dqn.policies import CnnPolicy, DQNPolicy, MlpPolicy, MultiInputPolicy
 
 SelfDQN = TypeVar("SelfDQN", bound="DQN")
@@ -68,31 +69,32 @@ class DQN(OffPolicyAlgorithm):
     }
 
     def __init__(
-        self,
-        policy: Union[str, Type[DQNPolicy]],
-        env: Union[GymEnv, str],
-        learning_rate: Union[float, Schedule] = 1e-4,
-        buffer_size: int = 1_000_000,  # 1e6
-        learning_starts: int = 50000,
-        batch_size: int = 32,
-        tau: float = 1.0,
-        gamma: float = 0.99,
-        train_freq: Union[int, Tuple[int, str]] = 4,
-        gradient_steps: int = 1,
-        replay_buffer_class: Optional[Type[ReplayBuffer]] = None,
-        replay_buffer_kwargs: Optional[Dict[str, Any]] = None,
-        optimize_memory_usage: bool = False,
-        target_update_interval: int = 10000,
-        exploration_fraction: float = 0.1,
-        exploration_initial_eps: float = 1.0,
-        exploration_final_eps: float = 0.05,
-        max_grad_norm: float = 10,
-        tensorboard_log: Optional[str] = None,
-        policy_kwargs: Optional[Dict[str, Any]] = None,
-        verbose: int = 0,
-        seed: Optional[int] = None,
-        device: Union[th.device, str] = "auto",
-        _init_setup_model: bool = True,
+            self,
+            policy: Union[str, Type[DQNPolicy]],
+            env: Union[GymEnv, str],
+            learning_rate: Union[float, Schedule] = 1e-4,
+            buffer_size: int = 1_000_000,  # 1e6
+            learning_starts: int = 50000,
+            batch_size: int = 32,
+            tau: float = 1.0,
+            gamma: float = 0.99,
+            train_freq: Union[int, Tuple[int, str]] = 4,
+            gradient_steps: int = 1,
+            replay_buffer_class: Optional[Type[ReplayBuffer]] = None,
+            replay_buffer_kwargs: Optional[Dict[str, Any]] = None,
+            optimize_memory_usage: bool = False,
+            target_update_interval: int = 10000,
+            exploration_fraction: float = 0.1,
+            exploration_initial_eps: float = 1.0,
+            exploration_final_eps: float = 0.05,
+            max_grad_norm: float = 10,
+            tensorboard_log: Optional[str] = None,
+            policy_kwargs: Optional[Dict[str, Any]] = None,
+            verbose: int = 0,
+            seed: Optional[int] = None,
+            device: Union[th.device, str] = "auto",
+            _init_setup_model: bool = True,
+            is_double_q: bool = False,
     ):
         super().__init__(
             policy,
@@ -131,6 +133,7 @@ class DQN(OffPolicyAlgorithm):
         # Linear schedule will be defined in `_setup_model()`
         self.exploration_schedule = None
         self.q_net, self.q_net_target = None, None
+        self.is_double_q = is_double_q,
 
         if _init_setup_model:
             self._setup_model()
@@ -191,8 +194,15 @@ class DQN(OffPolicyAlgorithm):
             with th.no_grad():
                 # Compute the next Q-values using the target network
                 next_q_values = self.q_net_target(replay_data.next_observations)
-                # Follow greedy policy: use the one with the highest value
-                next_q_values, _ = next_q_values.max(dim=1)
+                if self.is_double_q:
+                    # Select best actions using the online network
+                    next_q_values_online = self.q_net(replay_data.next_observations)
+                    next_actions = next_q_values_online.argmax(dim=1)
+                    # Compute the next Q-values using the target network
+                    next_q_values = th.gather(next_q_values, dim=1, index=next_actions.unsqueeze(-1))
+                else:
+                    # Follow greedy policy: use the one with the highest value
+                    next_q_values, _ = next_q_values.max(dim=1)
                 # Avoid potential broadcast issue
                 next_q_values = next_q_values.reshape(-1, 1)
                 # 1-step TD target
@@ -222,11 +232,11 @@ class DQN(OffPolicyAlgorithm):
         self.logger.record("train/loss", np.mean(losses))
 
     def predict(
-        self,
-        observation: Union[np.ndarray, Dict[str, np.ndarray]],
-        state: Optional[Tuple[np.ndarray, ...]] = None,
-        episode_start: Optional[np.ndarray] = None,
-        deterministic: bool = False,
+            self,
+            observation: Union[np.ndarray, Dict[str, np.ndarray]],
+            state: Optional[Tuple[np.ndarray, ...]] = None,
+            episode_start: Optional[np.ndarray] = None,
+            deterministic: bool = False,
     ) -> Tuple[np.ndarray, Optional[Tuple[np.ndarray, ...]]]:
         """
         Overrides the base_class predict function to include epsilon-greedy exploration.
@@ -252,13 +262,13 @@ class DQN(OffPolicyAlgorithm):
         return action, state
 
     def learn(
-        self: SelfDQN,
-        total_timesteps: int,
-        callback: MaybeCallback = None,
-        log_interval: int = 4,
-        tb_log_name: str = "DQN",
-        reset_num_timesteps: bool = True,
-        progress_bar: bool = False,
+            self: SelfDQN,
+            total_timesteps: int,
+            callback: MaybeCallback = None,
+            log_interval: int = 4,
+            tb_log_name: str = "DQN",
+            reset_num_timesteps: bool = True,
+            progress_bar: bool = False,
     ) -> SelfDQN:
         return super().learn(
             total_timesteps=total_timesteps,
